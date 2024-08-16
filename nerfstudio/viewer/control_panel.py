@@ -26,6 +26,7 @@ from viser import ViserServer
 from nerfstudio.data.scene_box import OrientedBox
 from nerfstudio.utils.colormaps import ColormapOptions, Colormaps
 from nerfstudio.viewer.viewer_elements import (  # ViewerButtonGroup,
+    ViewerButton,
     ViewerButtonGroup,
     ViewerCheckbox,
     ViewerDropdown,
@@ -149,6 +150,24 @@ class ControlPanel:
             cb_hook=lambda han: [self.update_control_panel(), rerender_cb()],
             hint="Crop the scene to a specified box",
         )
+        self._add_viewpoints = ViewerButton(
+            name="Add Additional Viewpoints",
+            cb_hook=lambda _: self.add_viewpoints_cb(),
+            disabled=False,
+            visible=True,
+        )
+        self._visualise_error = ViewerCheckbox(
+            "Photometric Error",
+            False,
+            cb_hook=lambda _: self.visualise_error_cb(),
+            hint="Visualise the photometric error",
+        )
+        self._calculate_viewpoints = ViewerCheckbox(
+            "Suggest Viewpoints",
+            False,
+            cb_hook=lambda _: self.calculate_viewpoints_cb(),
+            hint="Suggest viewpoints based on photometric error",
+        )
         self._background_color = ViewerRGB(
             "Background color", (38, 42, 55), cb_hook=lambda _: rerender_cb(), hint="Color of the background"
         )
@@ -224,10 +243,16 @@ class ControlPanel:
             self.add_element(self._crop_center, additional_tags=("crop",))
             self.add_element(self._crop_scale, additional_tags=("crop",))
             self.add_element(self._crop_rot, additional_tags=("crop",))
+        
+        # Photometric error analysis options
+        with self.server.gui.add_folder("Custom Controls"):
+            self.add_element(self._visualise_error)
+            self.add_element(self._calculate_viewpoints)
+            self.add_element(self._add_viewpoints)
 
         self.add_element(self._time, additional_tags=("time",))
         self._reset_camera = server.gui.add_button(
-            label="Reset Up Direction",
+            label="Reset The Direction",
             icon=viser.Icon.ARROW_BIG_UP_LINES,
             color="gray",
             hint="Set the up direction of the camera orbit controls to the camera's current up direction.",
@@ -272,6 +297,12 @@ class ControlPanel:
         for t in additional_tags:
             self._elements_by_tag[t].append(e)
         e.install(self.server)
+    
+    def add_viewpoints_cb(self) -> None:
+        print("Button clicked: Adding additional viewpoints")
+
+    def calculate_viewpoints_cb(self) -> None:
+        print("Button clicked: Suggesting viewpoints")
 
     def update_control_panel(self) -> None:
         """
@@ -308,6 +339,9 @@ class ControlPanel:
             dtype: the data type of the render
         """
         self._split_colormap.set_options(_get_colormap_options(dimensions, dtype))
+    
+    def visualise_error_cb(self) -> None:
+        print("Button clicked: Visualising Error")
 
     @property
     def output_render(self) -> str:
