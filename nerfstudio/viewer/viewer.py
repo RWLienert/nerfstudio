@@ -79,6 +79,8 @@ class Viewer:
         log_filename: Path,
         datapath: Path,
         pipeline: Pipeline,
+        datapath2: Optional[Path] = None,
+        pipeline2: Optional[Pipeline] = None,
         trainer: Optional[Trainer] = None,
         train_lock: Optional[threading.Lock] = None,
         share: bool = False,
@@ -89,9 +91,18 @@ class Viewer:
         self.last_step = 0
         self.train_lock = train_lock
         self.pipeline = pipeline
+        self.pipeline2 = pipeline2
         self.log_filename = log_filename
         self.datapath = datapath.parent if datapath.is_file() else datapath
+        self.datapath2 = datapath2.parent if datapath2 and datapath2.is_file() else datapath2
         self.include_time = self.pipeline.datamanager.includes_time
+        self.num_pipelines = 2 if pipeline2 else 1
+
+        if self.pipeline2:
+            # Logic for handling two pipelines
+            print("Viewer initialized with two pipelines.")
+        else:
+            print("Viewer initialized with one pipeline.")
 
         if self.config.websocket_port is None:
             websocket_port = viewer_utils.get_free_port(default_port=self.config.websocket_port_default)
@@ -548,6 +559,10 @@ class Viewer:
     def get_model(self) -> Model:
         """Returns the model."""
         return self.pipeline.model
+    
+    def get_model2(self) -> Model2:
+        """Returns the second model."""
+        return self.pipeline2.model
 
     def training_complete(self) -> None:
         """Called when training is complete."""

@@ -94,6 +94,7 @@ class RenderStateMachine(threading.Thread):
         Args:
             action: the action to take
         """
+
         if self.next_action is None:
             self.next_action = action
         elif action.action == "step" and (self.state == "low_move" or self.next_action.action in ("move", "rerender")):
@@ -122,6 +123,7 @@ class RenderStateMachine(threading.Thread):
         Args:
             camera_state: the current camera state
         """
+        
         # initialize the camera ray bundle
         if self.viewer.control_panel.crop_viewport:
             obb = self.viewer.control_panel.crop_obb
@@ -163,45 +165,77 @@ class RenderStateMachine(threading.Thread):
                         with background_color_override_context(
                             background_color
                         ), torch.no_grad(), viewer_utils.SetTrace(self.check_interrupt):
-                            outputs = self.viewer.get_model().get_outputs_for_camera(camera, obb_box=obb)
+                            outputs1 = self.viewer.get_model().get_outputs_for_camera(camera, obb_box=obb)
+                        if self.viewer.num_pipelines == 2:
+                            with background_color_override_context(
+                                background_color
+                            ), torch.no_grad(), viewer_utils.SetTrace(self.check_interrupt):
+                                outputs2 = self.viewer.get_model2().get_outputs_for_camera(camera, obb_box=obb)
                     else:
                         with torch.no_grad(), viewer_utils.SetTrace(self.check_interrupt):
-                            outputs = self.viewer.get_model().get_outputs_for_camera(camera, obb_box=obb)
+                            outputs1 = self.viewer.get_model().get_outputs_for_camera(camera, obb_box=obb)
+                        if self.viewer.num_pipelines == 2:
+                            with torch.no_grad(), viewer_utils.SetTrace(self.check_interrupt):
+                                outputs2 = self.viewer.get_model2().get_outputs_for_camera(camera, obb_box=obb)
                 except viewer_utils.IOChangeException:
                     self.viewer.get_model().train()
                     raise
                 self.viewer.get_model().train()
+
+            if self.viewer.num_pipelines == 2:
+                # Compute the difference between the two outputs
+                rgb_diff = outputs1["rgb"] - outputs2["rgb"]
+                
+                # Set a threshold to identify significant errors
+                threshold = 0.5  # You can adjust this value to change the sensitivity
+
+                # Create a mask for significant errors
+                error_mask = torch.abs(rgb_diff) > threshold
+                
+                # Emphasize the differences by scaling them up
+                emphasized_diff = rgb_diff * 2.0  # Adjust this factor to make differences more visible
+                
+                # Create a yellow color overlay for the significant errors
+                yellow_overlay = torch.zeros_like(rgb_diff)
+                yellow_overlay[..., 0] = 1.0  # Red channel (R)
+                yellow_overlay[..., 1] = 1.0  # Green channel (G)
+                yellow_overlay[..., 2] = 0.0  # Blue channel (B)
+
+                # Blend the original RGB with the yellow overlay based on the error mask
+                blended_diff = (1 - error_mask.float()) * outputs1["rgb"] + error_mask.float() * yellow_overlay
+                
+                # Apply the blended differences to outputs1's RGB
+                outputs1["rgb"] = blended_diff
+
             num_rays = (camera.height * camera.width).item()
             if self.viewer.control_panel.layer_depth:
                 if isinstance(self.viewer.get_model(), SplatfactoModel):
-                    # Gaussians render much faster than we can send depth images, so we do some downsampling.
-                    assert len(outputs["depth"].shape) == 3
-                    assert outputs["depth"].shape[-1] == 1
+                    assert len(outputs1["depth"].shape) == 3
+                    assert outputs1["depth"].shape[-1] == 1
 
                     desired_depth_pixels = {"low_move": 128, "low_static": 128, "high": 512}[self.state] ** 2
-                    current_depth_pixels = outputs["depth"].shape[0] * outputs["depth"].shape[1]
+                    current_depth_pixels = outputs1["depth"].shape[0] * outputs1["depth"].shape[1]
 
-                    # from the panel of ns-viewer, it is possible for user to enter zero resolution
                     scale = min(desired_depth_pixels / max(1, current_depth_pixels), 1.0)
 
-                    outputs["gl_z_buf_depth"] = F.interpolate(
-                        outputs["depth"].squeeze(dim=-1)[None, None, ...],
-                        size=(int(outputs["depth"].shape[0] * scale), int(outputs["depth"].shape[1] * scale)),
+                    outputs1["gl_z_buf_depth"] = F.interpolate(
+                        outputs1["depth"].squeeze(dim=-1)[None, None, ...],
+                        size=(int(outputs1["depth"].shape[0] * scale), int(outputs1["depth"].shape[1] * scale)),
                         mode="bilinear",
                     )[0, 0, :, :, None]
                 else:
-                    # Convert to z_depth if depth compositing is enabled.
                     R = camera.camera_to_worlds[0, 0:3, 0:3].T
                     camera_ray_bundle = camera.generate_rays(camera_indices=0, obb_box=obb)
-                    pts = camera_ray_bundle.directions * outputs["depth"]
+                    pts = camera_ray_bundle.directions * outputs1["depth"]
                     pts = (R @ (pts.view(-1, 3).T)).T.view(*camera_ray_bundle.directions.shape)
-                    outputs["gl_z_buf_depth"] = -pts[..., 2:3]  # negative z axis is the coordinate convention
+                    outputs1["gl_z_buf_depth"] = -pts[..., 2:3]  # negative z axis is the coordinate convention
+
         render_time = vis_t.duration
         if writer.is_initialized() and render_time != 0:
             writer.put_time(
                 name=EventName.VIS_RAYS_PER_SEC, duration=num_rays / render_time, step=step, avg_over_steps=True
             )
-        return outputs
+        return outputs1
 
     def run(self):
         """Main loop for the render thread"""

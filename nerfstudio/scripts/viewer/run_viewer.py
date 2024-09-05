@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from threading import Lock
-from typing import Literal
+from typing import Literal, Optional, List
 
 import tyro
 
@@ -51,8 +51,8 @@ class ViewerConfigWithoutNumRays(ViewerConfig):
 class RunViewer:
     """Load a checkpoint and start the viewer."""
 
-    load_config: Path
-    """Path to config YAML file."""
+    load_config: List[Path]
+    
     viewer: ViewerConfigWithoutNumRays = field(default_factory=ViewerConfigWithoutNumRays)
     """Viewer configuration"""
     vis: Literal["viewer", "viewer_legacy"] = "viewer"
@@ -60,18 +60,34 @@ class RunViewer:
 
     def main(self) -> None:
         """Main function."""
-        config, pipeline, _, step = eval_setup(
-            self.load_config,
+        if len(self.load_config) not in [1, 2]:
+            raise ValueError("You must provide 1 or 2 config paths")       
+        
+        config1, pipeline1, _, step1 = eval_setup(
+            self.load_config[0],
             eval_num_rays_per_chunk=None,
             test_mode="test",
         )
-        num_rays_per_chunk = config.viewer.num_rays_per_chunk
+        
+        num_rays_per_chunk = config1.viewer.num_rays_per_chunk
         assert self.viewer.num_rays_per_chunk == -1
-        config.vis = self.vis
-        config.viewer = self.viewer.as_viewer_config()
-        config.viewer.num_rays_per_chunk = num_rays_per_chunk
+        config1.vis = self.vis
+        config1.viewer = self.viewer.as_viewer_config()
+        config1.viewer.num_rays_per_chunk = num_rays_per_chunk
+        
+        if len(self.load_config) == 2:
+            config2, pipeline2, _, step2 = eval_setup(
+                self.load_config[1],
+                eval_num_rays_per_chunk=None,
+                test_mode="test",
+            )
+            config2.vis = self.vis
+            config2.viewer = self.viewer.as_viewer_config()
+            config2.viewer.num_rays_per_chunk = num_rays_per_chunk
 
-        _start_viewer(config, pipeline, step)
+            _start_viewer(config1, pipeline1, step1, config2, pipeline2, step2)
+        else:
+            _start_viewer(config1, pipeline1, step1)
 
     def save_checkpoint(self, *args, **kwargs):
         """
@@ -79,7 +95,7 @@ class RunViewer:
         """
 
 
-def _start_viewer(config: TrainerConfig, pipeline: Pipeline, step: int):
+def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, config2: Optional[TrainerConfig] = None, pipeline2: Optional[Pipeline] = None, step2: Optional[int] = None):
     """Starts the viewer
 
     Args:
@@ -87,44 +103,46 @@ def _start_viewer(config: TrainerConfig, pipeline: Pipeline, step: int):
         pipeline: Pipeline instance of which to load weights
         step: Step at which the pipeline was saved
     """
-    base_dir = config.get_base_dir()
-    viewer_log_path = base_dir / config.viewer.relative_log_filename
+    base_dir = config1.get_base_dir()
+    viewer_log_path = base_dir / config1.viewer.relative_log_filename
     banner_messages = None
     viewer_state = None
     viewer_callback_lock = Lock()
-    if config.vis == "viewer_legacy":
+    if config1.vis == "viewer_legacy":
         viewer_state = ViewerLegacyState(
-            config.viewer,
+            config1.viewer,
             log_filename=viewer_log_path,
-            datapath=pipeline.datamanager.get_datapath(),
-            pipeline=pipeline,
+            datapath=pipeline1.datamanager.get_datapath(),
+            pipeline=pipeline1,
             train_lock=viewer_callback_lock,
         )
         banner_messages = [f"Legacy viewer at: {viewer_state.viewer_url}"]
-    if config.vis == "viewer":
+    if config1.vis == "viewer":
         viewer_state = ViewerState(
-            config.viewer,
+            config1.viewer,
             log_filename=viewer_log_path,
-            datapath=pipeline.datamanager.get_datapath(),
-            pipeline=pipeline,
-            share=config.viewer.make_share_url,
+            datapath=pipeline1.datamanager.get_datapath(),
+            datapath2=pipeline2.datamanager.get_datapath() if pipeline2 else None,
+            pipeline=pipeline1,
+            pipeline2=pipeline2 if pipeline2 else None,
+            share=config1.viewer.make_share_url,
             train_lock=viewer_callback_lock,
         )
         banner_messages = viewer_state.viewer_info
 
     # We don't need logging, but writer.GLOBAL_BUFFER needs to be populated
-    config.logging.local_writer.enable = False
-    writer.setup_local_writer(config.logging, max_iter=config.max_num_iterations, banner_messages=banner_messages)
+    config1.logging.local_writer.enable = False
+    writer.setup_local_writer(config1.logging, max_iter=config1.max_num_iterations, banner_messages=banner_messages)
 
-    assert viewer_state and pipeline.datamanager.train_dataset
+    assert viewer_state and pipeline1.datamanager.train_dataset
     viewer_state.init_scene(
-        train_dataset=pipeline.datamanager.train_dataset,
+        train_dataset=pipeline1.datamanager.train_dataset,
         train_state="completed",
-        eval_dataset=pipeline.datamanager.eval_dataset,
+        eval_dataset=pipeline1.datamanager.eval_dataset,
     )
     if isinstance(viewer_state, ViewerLegacyState):
         viewer_state.viser_server.set_training_state("completed")
-    viewer_state.update_scene(step=step)
+    viewer_state.update_scene(step=step1)
     while True:
         time.sleep(0.01)
 

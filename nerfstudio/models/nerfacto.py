@@ -314,9 +314,12 @@ class NerfactoModel(Model):
             depth = self.renderer_depth(weights=weights, ray_samples=ray_samples)
         expected_depth = self.renderer_expected_depth(weights=weights, ray_samples=ray_samples)
         accumulation = self.renderer_accumulation(weights=weights)
+        
+        photometric_error = depth - expected_depth
 
         outputs = {
             "rgb": rgb,
+            "photometric_error": photometric_error,
             "accumulation": accumulation,
             "depth": depth,
             "expected_depth": expected_depth,
