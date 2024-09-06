@@ -163,7 +163,7 @@ class ControlPanel:
         )
         self._error_threshold = ViewerSlider(
             "Threshold",
-            0.5,
+            0.4,
             0,
             1,
             0.1,
@@ -172,10 +172,10 @@ class ControlPanel:
         )
         self._error_emphasis = ViewerSlider(
             "Emphasis",
-            2,
+            10,
             0,
-            4,
-            0.5,
+            10,
+            1,
             cb_hook=lambda _: rerender_cb(),
             hint="Emphasize error in model",
         )
