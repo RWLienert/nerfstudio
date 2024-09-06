@@ -182,27 +182,30 @@ class RenderStateMachine(threading.Thread):
                     raise
                 self.viewer.get_model().train()
 
-            if self.viewer.num_pipelines == 2:
+            if self.viewer.control_panel.num_pipelines == 2:
                 # Compute the difference between the two outputs
                 rgb_diff = outputs1["rgb"] - outputs2["rgb"]
                 
                 # Set a threshold to identify significant errors
-                threshold = 0.5  # You can adjust this value to change the sensitivity
+                threshold = self.viewer.control_panel.error_threshold
 
                 # Create a mask for significant errors
                 error_mask = torch.abs(rgb_diff) > threshold
                 
                 # Emphasize the differences by scaling them up
-                emphasized_diff = rgb_diff * 2.0  # Adjust this factor to make differences more visible
+                emphasized_diff = rgb_diff * self.viewer.control_panel.error_emphasis
                 
-                # Create a yellow color overlay for the significant errors
-                yellow_overlay = torch.zeros_like(rgb_diff)
-                yellow_overlay[..., 0] = 1.0  # Red channel (R)
-                yellow_overlay[..., 1] = 1.0  # Green channel (G)
-                yellow_overlay[..., 2] = 0.0  # Blue channel (B)
+                # Retrieve desired colour overlay
+                error_colour = self.viewer.control_panel.error_colour
+                
+                # Create a colour overlay for the significant errors
+                error_overlay = torch.zeros_like(rgb_diff)
+                error_overlay[..., 0] = error_colour[0] # Red channel (R)
+                error_overlay[..., 1] = error_colour[1]  # Green channel (G)
+                error_overlay[..., 2] = error_colour[2]  # Blue channel (B)
 
-                # Blend the original RGB with the yellow overlay based on the error mask
-                blended_diff = (1 - error_mask.float()) * outputs1["rgb"] + error_mask.float() * yellow_overlay
+                # Blend the original RGB with the error overlay based on the error mask
+                blended_diff = (1 - error_mask.float()) * outputs1["rgb"] + error_mask.float() * error_overlay
                 
                 # Apply the blended differences to outputs1's RGB
                 outputs1["rgb"] = blended_diff

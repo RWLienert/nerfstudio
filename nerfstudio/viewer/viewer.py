@@ -206,6 +206,7 @@ class Viewer:
             self.control_panel = ControlPanel(
                 self.viser_server,
                 self.include_time,
+                self.num_pipelines,
                 VISER_NERFSTUDIO_SCALE_RATIO,
                 self._trigger_rerender,
                 self._output_type_change,

@@ -37,7 +37,6 @@ from nerfstudio.viewer.viewer_elements import (  # ViewerButtonGroup,
     ViewerVec3,
 )
 
-
 class ControlPanel:
     """
     Initializes the control panel with all the elements
@@ -53,6 +52,7 @@ class ControlPanel:
         self,
         server: ViserServer,
         time_enabled: bool,
+        num_pipelines: int,
         scale_ratio: float,
         rerender_cb: Callable[[], None],
         update_output_cb: Callable,
@@ -64,6 +64,7 @@ class ControlPanel:
         self.server = server
         self._elements_by_tag: DefaultDict[str, List[ViewerElement]] = defaultdict(lambda: [])
         self.default_composite_depth = default_composite_depth
+        self.num_pipelines = num_pipelines
 
         self._train_speed = ViewerButtonGroup(
             name="Train Speed",
@@ -150,23 +151,39 @@ class ControlPanel:
             cb_hook=lambda han: [self.update_control_panel(), rerender_cb()],
             hint="Crop the scene to a specified box",
         )
+        self._visualise_error = ViewerCheckbox(
+            "Photometric Error",
+            True,
+            cb_hook=lambda _: [self.visualise_error_cb(), rerender_cb()],
+            hint="Visualise the photometric error",
+        )
+        colours = ["yellow", "red", "blue", "green", "white", "black"]
+        self._error_colour = ViewerDropdown[colours](
+            "Colormap ", "yellow", colours, cb_hook=lambda _: rerender_cb(), hint="Select colour for error"
+        )
+        self._error_threshold = ViewerSlider(
+            "Threshold",
+            0.5,
+            0,
+            1,
+            0.1,
+            cb_hook=lambda _: rerender_cb(),
+            hint="Adjust error threshold",
+        )
+        self._error_emphasis = ViewerSlider(
+            "Emphasis",
+            2,
+            0,
+            4,
+            0.5,
+            cb_hook=lambda _: rerender_cb(),
+            hint="Emphasize error in model",
+        )
         self._add_viewpoints = ViewerButton(
             name="Add Additional Viewpoints",
             cb_hook=lambda _: self.add_viewpoints_cb(),
             disabled=False,
             visible=True,
-        )
-        self._visualise_error = ViewerCheckbox(
-            "Photometric Error",
-            False,
-            cb_hook=lambda _: self.visualise_error_cb(),
-            hint="Visualise the photometric error",
-        )
-        self._calculate_viewpoints = ViewerCheckbox(
-            "Suggest Viewpoints",
-            False,
-            cb_hook=lambda _: self.calculate_viewpoints_cb(),
-            hint="Suggest viewpoints based on photometric error",
         )
         self._background_color = ViewerRGB(
             "Background color", (38, 42, 55), cb_hook=lambda _: rerender_cb(), hint="Color of the background"
@@ -247,7 +264,10 @@ class ControlPanel:
         # Photometric error analysis options
         with self.server.gui.add_folder("Custom Controls"):
             self.add_element(self._visualise_error)
-            self.add_element(self._calculate_viewpoints)
+            # Error options
+            self.add_element(self._error_colour)
+            self.add_element(self._error_threshold)
+            self.add_element(self._error_emphasis)
             self.add_element(self._add_viewpoints)
 
         self.add_element(self._time, additional_tags=("time",))
@@ -301,9 +321,6 @@ class ControlPanel:
     def add_viewpoints_cb(self) -> None:
         print("Button clicked: Adding additional viewpoints")
 
-    def calculate_viewpoints_cb(self) -> None:
-        print("Button clicked: Suggesting viewpoints")
-
     def update_control_panel(self) -> None:
         """
         Sets elements to be hidden or not based on the current state of the control panel
@@ -321,6 +338,21 @@ class ControlPanel:
         self._split_colormap.set_hidden(not self._split.value)
         self._split_colormap.set_disabled(self.split_output_render == "rgb")
         self._crop_handle.visible = self.crop_viewport
+        
+        if self.num_pipelines == 2:
+            # Enable "Photometric Error" when two pipelines are active
+            self._visualise_error.set_disabled(False)
+            self._error_colour.set_hidden(False)
+            self._error_threshold.set_hidden(False)
+            self._error_emphasis.set_hidden(False)
+        else:
+            # Hide and disable error controls if only one pipeline is active
+            self._visualise_error.set_disabled(True)
+            self._visualise_error.default_value(False)
+            self._error_colour.set_hidden(True)
+            self._error_threshold.set_hidden(True)
+            self._error_emphasis.set_hidden(True)
+
 
     def update_colormap_options(self, dimensions: int, dtype: type) -> None:
         """update the colormap options based on the current render
@@ -341,7 +373,10 @@ class ControlPanel:
         self._split_colormap.set_options(_get_colormap_options(dimensions, dtype))
     
     def visualise_error_cb(self) -> None:
-        print("Button clicked: Visualising Error")
+        if (self.num_pipelines == 1):
+            self.num_pipelines = 2
+        else:
+            self.num_pipelines = 1
 
     @property
     def output_render(self) -> str:
@@ -377,6 +412,30 @@ class ControlPanel:
     def crop_viewport(self) -> bool:
         """Returns the current crop viewport setting"""
         return self._crop_viewport.value
+
+    @property
+    def error_colour(self) -> torch.Tensor:
+        # Define color mappings
+        colours = {
+            "yellow": (1.0, 1.0, 0.0),  # RGB for yellow
+            "red": (1.0, 0.0, 0.0),     # RGB for red
+            "blue": (0.0, 0.0, 1.0),    # RGB for blue
+            "green": (0.0, 1.0, 0.0),   # RGB for green
+            "white": (1.0, 1.0, 1.0),   # RGB for white
+            "black": (0.0, 0.0, 0.0)    # RGB for black
+        }
+
+        colour = colours.get(self._error_colour.value)
+        
+        return torch.tensor(colour).float()
+    
+    @property
+    def error_threshold(self) -> float:
+        return self._error_threshold.value
+    
+    @property
+    def error_emphasis(self) -> float:
+        return self._error_emphasis.value
 
     @crop_viewport.setter
     def crop_viewport(self, value: bool):
