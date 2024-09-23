@@ -77,6 +77,7 @@ class Viewer:
         self,
         config: cfg.ViewerConfig,
         log_filename: Path,
+        data_location: Path,
         datapath: Path,
         pipeline: Pipeline,
         datapath2: Optional[Path] = None,
@@ -93,6 +94,7 @@ class Viewer:
         self.pipeline = pipeline
         self.pipeline2 = pipeline2
         self.log_filename = log_filename
+        self.data_location = data_location
         self.datapath = datapath.parent if datapath.is_file() else datapath
         self.datapath2 = datapath2.parent if datapath2 and datapath2.is_file() else datapath2
         self.include_time = self.pipeline.datamanager.includes_time
@@ -207,6 +209,7 @@ class Viewer:
                 self.viser_server,
                 self.include_time,
                 self.num_pipelines,
+                self.data_location,
                 VISER_NERFSTUDIO_SCALE_RATIO,
                 self._trigger_rerender,
                 self._output_type_change,

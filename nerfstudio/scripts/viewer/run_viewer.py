@@ -85,9 +85,9 @@ class RunViewer:
             config2.viewer = self.viewer.as_viewer_config()
             config2.viewer.num_rays_per_chunk = num_rays_per_chunk
 
-            _start_viewer(config1, pipeline1, step1, config2, pipeline2, step2)
+            _start_viewer(config1, pipeline1, step1, config2, pipeline2, step2, load_config=self.load_config)
         else:
-            _start_viewer(config1, pipeline1, step1)
+            _start_viewer(config1, pipeline1, step1, load_config=self.load_config)
 
     def save_checkpoint(self, *args, **kwargs):
         """
@@ -95,7 +95,7 @@ class RunViewer:
         """
 
 
-def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, config2: Optional[TrainerConfig] = None, pipeline2: Optional[Pipeline] = None, step2: Optional[int] = None):
+def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, config2: Optional[TrainerConfig] = None, pipeline2: Optional[Pipeline] = None, step2: Optional[int] = None, load_config: Optional[List[Path]] = None):
     """Starts the viewer
 
     Args:
@@ -108,6 +108,10 @@ def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, confi
     banner_messages = None
     viewer_state = None
     viewer_callback_lock = Lock()
+    base_path = str(load_config[0]).replace("outputs", "")
+    base_path = Path(base_path).parents[3]
+    data_location = base_path / pipeline1.datamanager.get_datapath() / "images"
+
     if config1.vis == "viewer_legacy":
         viewer_state = ViewerLegacyState(
             config1.viewer,
@@ -121,6 +125,7 @@ def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, confi
         viewer_state = ViewerState(
             config1.viewer,
             log_filename=viewer_log_path,
+            data_location = data_location,
             datapath=pipeline1.datamanager.get_datapath(),
             datapath2=pipeline2.datamanager.get_datapath() if pipeline2 else None,
             pipeline=pipeline1,

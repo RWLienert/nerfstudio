@@ -15,6 +15,7 @@
 """Control panel for the viewer"""
 
 from collections import defaultdict
+from pathlib import Path
 from typing import Callable, DefaultDict, List, Tuple, get_args
 
 import numpy as np
@@ -36,6 +37,7 @@ from nerfstudio.viewer.viewer_elements import (  # ViewerButtonGroup,
     ViewerSlider,
     ViewerVec3,
 )
+from nerfstudio.viewer.edit_viewpoints import open_file_explorer
 
 class ControlPanel:
     """
@@ -53,6 +55,7 @@ class ControlPanel:
         server: ViserServer,
         time_enabled: bool,
         num_pipelines: int,
+        data_location: Path,
         scale_ratio: float,
         rerender_cb: Callable[[], None],
         update_output_cb: Callable,
@@ -60,11 +63,12 @@ class ControlPanel:
         default_composite_depth: bool = True,
     ):
         self.viser_scale_ratio = scale_ratio
+        self.num_pipelines = num_pipelines
+        self.data_location = data_location
         # elements holds a mapping from tag: [elements]
         self.server = server
         self._elements_by_tag: DefaultDict[str, List[ViewerElement]] = defaultdict(lambda: [])
         self.default_composite_depth = default_composite_depth
-        self.num_pipelines = num_pipelines
 
         self._train_speed = ViewerButtonGroup(
             name="Train Speed",
@@ -179,9 +183,9 @@ class ControlPanel:
             cb_hook=lambda _: rerender_cb(),
             hint="Emphasize error in model",
         )
-        self._add_viewpoints = ViewerButton(
-            name="Add Additional Viewpoints",
-            cb_hook=lambda _: self.add_viewpoints_cb(),
+        self._edit_viewpoints = ViewerButton(
+            name="Add/Remove Viewpoints",
+            cb_hook=lambda _: self.edit_viewpoints_cb(),
             disabled=False,
             visible=True,
         )
@@ -268,7 +272,7 @@ class ControlPanel:
             self.add_element(self._error_colour)
             self.add_element(self._error_threshold)
             self.add_element(self._error_emphasis)
-            self.add_element(self._add_viewpoints)
+            self.add_element(self._edit_viewpoints)
 
         self.add_element(self._time, additional_tags=("time",))
         self._reset_camera = server.gui.add_button(
@@ -318,8 +322,8 @@ class ControlPanel:
             self._elements_by_tag[t].append(e)
         e.install(self.server)
     
-    def add_viewpoints_cb(self) -> None:
-        print("Button clicked: Adding additional viewpoints")
+    def edit_viewpoints_cb(self) -> None:
+        open_file_explorer(self.data_location)
 
     def update_control_panel(self) -> None:
         """
