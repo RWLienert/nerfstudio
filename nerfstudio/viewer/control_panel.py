@@ -16,7 +16,7 @@
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable, DefaultDict, List, Tuple, get_args
+from typing import Callable, DefaultDict, List, Tuple, get_args, Optional
 
 import numpy as np
 import torch
@@ -37,7 +37,7 @@ from nerfstudio.viewer.viewer_elements import (  # ViewerButtonGroup,
     ViewerSlider,
     ViewerVec3,
 )
-from nerfstudio.viewer.edit_viewpoints import open_file_explorer
+from nerfstudio.viewer.edit_viewpoints import open_file_explorer, generate_colmap
 
 class ControlPanel:
     """
@@ -55,7 +55,7 @@ class ControlPanel:
         server: ViserServer,
         time_enabled: bool,
         num_pipelines: int,
-        data_location: Path,
+        data_location: Optional[Path],
         scale_ratio: float,
         rerender_cb: Callable[[], None],
         update_output_cb: Callable,
@@ -189,6 +189,12 @@ class ControlPanel:
             disabled=False,
             visible=True,
         )
+        self._retrain_model = ViewerButton(
+            name="Retrain Model",
+            cb_hook=lambda _: self.retrain_model_cb(),
+            disabled=False,
+            visible=True,
+        )
         self._background_color = ViewerRGB(
             "Background color", (38, 42, 55), cb_hook=lambda _: rerender_cb(), hint="Color of the background"
         )
@@ -273,6 +279,7 @@ class ControlPanel:
             self.add_element(self._error_threshold)
             self.add_element(self._error_emphasis)
             self.add_element(self._edit_viewpoints)
+            self.add_element(self._retrain_model)
 
         self.add_element(self._time, additional_tags=("time",))
         self._reset_camera = server.gui.add_button(
@@ -324,6 +331,9 @@ class ControlPanel:
     
     def edit_viewpoints_cb(self) -> None:
         open_file_explorer(self.data_location)
+    
+    def retrain_model_cb(self) -> None:
+        generate_colmap(self.data_location)
 
     def update_control_panel(self) -> None:
         """

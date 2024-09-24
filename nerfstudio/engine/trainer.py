@@ -183,6 +183,7 @@ class Trainer:
             self.viewer_state = ViewerState(
                 self.config.viewer,
                 log_filename=viewer_log_path,
+                data_location=None,
                 datapath=datapath,
                 pipeline=self.pipeline,
                 trainer=self,
