@@ -23,9 +23,9 @@ def open_file_explorer(path: Path) -> None:
         raise OSError(f"Unsupported OS: {platform.system()}")
 
 # Run colmap again to recalculate camera poses
-def generate_colmap(path: Path) -> None:
+def generate_colmap(data_path: Path, config_path: Path) -> None:
     current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    new_path = str(path).replace("/images", f"_{current_time}")
+    new_path = str(data_path).replace("/images", f"_{current_time}")
     
     print("Calculating new camera positions: ")
     
@@ -33,7 +33,7 @@ def generate_colmap(path: Path) -> None:
         "ns-process-data",
         "images",
         "--data",
-        str(path),
+        str(data_path),
         "--output-dir",
         new_path
     ]
@@ -49,4 +49,9 @@ def generate_colmap(path: Path) -> None:
         new_path
     ]
     
-    subprocess.Popen(train_data)
+    subprocess.run(train_data, check=True)
+    
+    print("Previous model config path: ", config_path)
+    print("To view the difference between models run: ")
+    print("ns-viewer --load-config {larger_model_config} {smaller_model_config} ")
+    

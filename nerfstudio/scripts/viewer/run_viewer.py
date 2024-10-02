@@ -126,6 +126,7 @@ def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, confi
             config1.viewer,
             log_filename=viewer_log_path,
             data_location = data_location,
+            config_location = load_config[0],
             datapath=pipeline1.datamanager.get_datapath(),
             datapath2=pipeline2.datamanager.get_datapath() if pipeline2 else None,
             pipeline=pipeline1,

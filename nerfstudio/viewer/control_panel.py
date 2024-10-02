@@ -56,6 +56,7 @@ class ControlPanel:
         time_enabled: bool,
         num_pipelines: int,
         data_location: Optional[Path],
+        config_location: Optional[Path],
         scale_ratio: float,
         rerender_cb: Callable[[], None],
         update_output_cb: Callable,
@@ -65,6 +66,7 @@ class ControlPanel:
         self.viser_scale_ratio = scale_ratio
         self.num_pipelines = num_pipelines
         self.data_location = data_location
+        self.config_location = config_location
         # elements holds a mapping from tag: [elements]
         self.server = server
         self._elements_by_tag: DefaultDict[str, List[ViewerElement]] = defaultdict(lambda: [])
@@ -162,7 +164,7 @@ class ControlPanel:
             hint="Visualise the photometric error",
         )
         colours = ["yellow", "red", "blue", "green", "white", "black"]
-        self._error_colour = ViewerDropdown[colours](
+        self._error_colour = ViewerDropdown(
             "Colormap ", "yellow", colours, cb_hook=lambda _: rerender_cb(), hint="Select colour for error"
         )
         self._error_threshold = ViewerSlider(
@@ -192,6 +194,12 @@ class ControlPanel:
         self._retrain_model = ViewerButton(
             name="Retrain Model",
             cb_hook=lambda _: self.retrain_model_cb(),
+            disabled=False,
+            visible=True,
+        )
+        self._insert_camera = ViewerButton(
+            name="Insert Camera",
+            cb_hook=lambda _: self.insert_camera_cb(),
             disabled=False,
             visible=True,
         )
@@ -271,15 +279,20 @@ class ControlPanel:
             self.add_element(self._crop_scale, additional_tags=("crop",))
             self.add_element(self._crop_rot, additional_tags=("crop",))
         
-        # Photometric error analysis options
-        with self.server.gui.add_folder("Custom Controls"):
-            self.add_element(self._visualise_error)
-            # Error options
-            self.add_element(self._error_colour)
-            self.add_element(self._error_threshold)
-            self.add_element(self._error_emphasis)
-            self.add_element(self._edit_viewpoints)
-            self.add_element(self._retrain_model)
+        if (self.data_location != None):
+            # Photometric error analysis options
+            with self.server.gui.add_folder("Custom Controls"):
+                self.add_element(self._visualise_error)
+                # Error options
+                self.add_element(self._error_colour)
+                self.add_element(self._error_threshold)
+                self.add_element(self._error_emphasis)
+                self.add_element(self._edit_viewpoints)
+                self.add_element(self._retrain_model)
+                
+            with self.server.gui.add_folder("Experimental Viewpoints"):
+                # Experiment
+                self.add_element(self._insert_camera)
 
         self.add_element(self._time, additional_tags=("time",))
         self._reset_camera = server.gui.add_button(
@@ -331,9 +344,16 @@ class ControlPanel:
     
     def edit_viewpoints_cb(self) -> None:
         open_file_explorer(self.data_location)
+        
+    def insert_camera_cb(self) -> None:
+        camera_pos = self.server.scene.camera.position
+        camera_rot = self.server.scene.camera.rotation
+        
+        print(f"Camera Position: {camera_position}")
+        print(f"Camera Rotation: {camera_rotation}")
     
     def retrain_model_cb(self) -> None:
-        generate_colmap(self.data_location)
+        generate_colmap(self.data_location, self.config_location)
 
     def update_control_panel(self) -> None:
         """
@@ -359,6 +379,7 @@ class ControlPanel:
             self._error_colour.set_hidden(False)
             self._error_threshold.set_hidden(False)
             self._error_emphasis.set_hidden(False)
+            self._insert_camera.set_hidden(False)
         else:
             # Hide and disable error controls if only one pipeline is active
             self._visualise_error.set_disabled(True)
@@ -366,7 +387,7 @@ class ControlPanel:
             self._error_colour.set_hidden(True)
             self._error_threshold.set_hidden(True)
             self._error_emphasis.set_hidden(True)
-
+            self._insert_camera.set_hidden(True)
 
     def update_colormap_options(self, dimensions: int, dtype: type) -> None:
         """update the colormap options based on the current render
