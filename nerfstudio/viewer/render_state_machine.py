@@ -87,6 +87,7 @@ class RenderStateMachine(threading.Thread):
         self.viser_scale_ratio = viser_scale_ratio
         self.client = client
         self.running = True
+        self.percentage_with_colour = 0.0
 
     def action(self, action: RenderAction):
         """Takes an action and updates the state machine
@@ -191,6 +192,14 @@ class RenderStateMachine(threading.Thread):
 
                 # Create a mask for significant errors
                 error_mask = torch.abs(rgb_diff) > threshold
+                
+                # Calculate the percentage of pixels with significant color differences
+                total_pixels = error_mask.numel()  # Total number of pixels
+                significant_pixels = torch.sum(error_mask).item()  # Number of pixels with significant differences
+                colour_percentage = round((significant_pixels / total_pixels) * 100, 2)
+                if colour_percentage != self.percentage_with_colour:
+                    self.percentage_with_colour = colour_percentage
+                    self.viewer.update_percentage(colour_percentage)
                 
                 # Emphasize the differences based on the slider value
                 emphasis_value = self.viewer.control_panel.error_emphasis

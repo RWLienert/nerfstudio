@@ -515,7 +515,11 @@ class ViewerNumber(ViewerParameter[IntOrFloat], Generic[IntOrFloat]):
     def _create_gui_handle(self, viser_server: ViserServer) -> None:
         assert self.gui_handle is None, "gui_handle should be initialized once"
         self.gui_handle = viser_server.gui.add_number(
-            self.name, self.default_value, disabled=self.disabled, visible=self.visible, hint=self.hint
+            self.name,
+            self.default_value,
+            disabled=self.disabled,
+            visible=self.visible,
+            hint=self.hint
         )
 
 

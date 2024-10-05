@@ -163,6 +163,12 @@ class ControlPanel:
             cb_hook=lambda _: [self.visualise_error_cb(), rerender_cb()],
             hint="Visualise the photometric error",
         )
+        self._percentage_with_colour = ViewerNumber(
+            "Colour Error %",
+            0.00,
+            True,
+            hint="Displays the percentage of error between colours beyond the threshold"
+        )
         colours = ["yellow", "red", "blue", "green", "white", "black"]
         self._error_colour = ViewerDropdown(
             "Colormap ", "yellow", colours, cb_hook=lambda _: rerender_cb(), hint="Select colour for error"
@@ -284,6 +290,7 @@ class ControlPanel:
             with self.server.gui.add_folder("Custom Controls"):
                 self.add_element(self._visualise_error)
                 # Error options
+                self.add_element(self._percentage_with_colour)
                 self.add_element(self._error_colour)
                 self.add_element(self._error_threshold)
                 self.add_element(self._error_emphasis)
@@ -346,11 +353,11 @@ class ControlPanel:
         open_file_explorer(self.data_location)
         
     def insert_camera_cb(self) -> None:
-        camera_pos = self.server.scene.camera.position
-        camera_rot = self.server.scene.camera.rotation
-        
-        print(f"Camera Position: {camera_position}")
-        print(f"Camera Rotation: {camera_rotation}")
+        for client in self.server.get_clients().values():
+            camera_position = client.camera.position
+            camera_rotation = client.camera.wxyz
+            print(camera_rotation)
+            print(f"Client Camera Location: x = {camera_position[0]}, y = {camera_position[1]}, z = {camera_position[2]}")
     
     def retrain_model_cb(self) -> None:
         generate_colmap(self.data_location, self.config_location)
@@ -406,6 +413,10 @@ class ControlPanel:
             dtype: the data type of the render
         """
         self._split_colormap.set_options(_get_colormap_options(dimensions, dtype))
+    
+    def update_percentage_with_colour(self, percentage: float) -> None:
+        """Update the value of the percentage with colour number box"""
+        self._percentage_with_colour.value = percentage
     
     def visualise_error_cb(self) -> None:
         if (self.num_pipelines == 1):

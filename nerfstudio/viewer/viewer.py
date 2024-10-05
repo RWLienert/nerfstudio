@@ -123,6 +123,8 @@ class Viewer:
         self.last_move_time = 0
         # track the camera index that last being clicked
         self.current_camera_idx = 0
+        # hold camera locations
+        self.camera_positions = []
 
         self.viser_server = viser.ViserServer(host=config.websocket_host, port=websocket_port)
         # Set the name of the URL either to the share link if available, or the localhost
@@ -404,6 +406,11 @@ class Viewer:
             self.camera_handles[key].position = c2w[:3, 3] * VISER_NERFSTUDIO_SCALE_RATIO
             self.camera_handles[key].wxyz = R.wxyz
 
+    def update_percentage(self, percentage: float) -> None:
+        """Update Viewer Percentage."""
+        if self.control_panel._visualise_error.value == True:
+            self.control_panel.update_percentage_with_colour(percentage)
+        
     def _trigger_rerender(self) -> None:
         """Interrupt current render."""
         if not self.ready:
@@ -472,6 +479,10 @@ class Viewer:
             image_uint8 = image_uint8.permute(1, 2, 0)
             image_uint8 = image_uint8.cpu().numpy()
             c2w = camera.camera_to_worlds.cpu().numpy()
+            
+            camera_position = c2w[:3, 3] * VISER_NERFSTUDIO_SCALE_RATIO # Extracting camera position
+            self.camera_positions.append(camera_position)
+            
             R = vtf.SO3.from_matrix(c2w[:3, :3])
             R = R @ vtf.SO3.from_x_radians(np.pi)
             camera_handle = self.viser_server.scene.add_camera_frustum(

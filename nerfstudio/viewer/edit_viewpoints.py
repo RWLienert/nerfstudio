@@ -54,4 +54,3 @@ def generate_colmap(data_path: Path, config_path: Path) -> None:
     print("Previous model config path: ", config_path)
     print("To view the difference between models run: ")
     print("ns-viewer --load-config {larger_model_config} {smaller_model_config} ")
-    
