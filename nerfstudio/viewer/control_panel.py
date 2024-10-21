@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Callable, DefaultDict, List, Tuple, get_args, Optional
 
 import numpy as np
+import plotly.graph_objs as go
 import torch
 import viser
 import viser.transforms as vtf
@@ -37,7 +38,7 @@ from nerfstudio.viewer.viewer_elements import (  # ViewerButtonGroup,
     ViewerSlider,
     ViewerVec3,
 )
-from nerfstudio.viewer.edit_viewpoints import open_file_explorer, generate_colmap
+from nerfstudio.viewer.edit_viewpoints import open_file_explorer, generate_colmap, return_placement_error
 
 class ControlPanel:
     """
@@ -56,6 +57,7 @@ class ControlPanel:
         time_enabled: bool,
         num_pipelines: int,
         data_location: Optional[Path],
+        data_location_edited: Optional[Path],
         config_location: Optional[Path],
         scale_ratio: float,
         rerender_cb: Callable[[], None],
@@ -66,7 +68,9 @@ class ControlPanel:
         self.viser_scale_ratio = scale_ratio
         self.num_pipelines = num_pipelines
         self.data_location = data_location
+        self.data_location_edited = data_location_edited
         self.config_location = config_location
+        self.angle_error_button_clicked = False,
         # elements holds a mapping from tag: [elements]
         self.server = server
         self._elements_by_tag: DefaultDict[str, List[ViewerElement]] = defaultdict(lambda: [])
@@ -159,9 +163,9 @@ class ControlPanel:
         )
         self._visualise_error = ViewerCheckbox(
             "Photometric Error",
-            True,
-            cb_hook=lambda _: [self.visualise_error_cb(), rerender_cb()],
-            hint="Visualise the photometric error",
+            False,
+            cb_hook=lambda _: [self.update_control_panel(), rerender_cb()],
+            hint="Visualise the photometric error of scene",
         )
         self._percentage_with_colour = ViewerNumber(
             "Colour Error %",
@@ -190,6 +194,60 @@ class ControlPanel:
             1,
             cb_hook=lambda _: rerender_cb(),
             hint="Emphasize error in model",
+        )
+        self._angle_based_error = ViewerCheckbox(
+            "Angle-Based Error",
+            False,
+            cb_hook=lambda _: [self.update_control_panel(), rerender_cb()],
+            hint="Visualise the error from different angles around viewpoint",
+        )
+        self._origin_value = ViewerSlider(
+            "Camera Inset",
+            0.5,
+            0,
+            2,
+            0.5,
+            cb_hook=lambda _: rerender_cb(),
+            hint="Change origin of angle based analysis",
+        )
+        self._radius_value = ViewerSlider(
+            "Camera Radius",
+            2,
+            0,
+            10,
+            1, 
+            cb_hook=lambda _: rerender_cb(),
+            hint="Change radius of angle based analysis",
+        )
+        self._angle_origin = ViewerSlider(
+            "Angle Origin",
+            10,
+            1,
+            20,
+            1, 
+            cb_hook=lambda _: rerender_cb(),
+            hint="Change angle rotation origin",
+        )
+        self._viewpoint_slider = ViewerSlider(
+            "Viewpoint Slider",
+            0,
+            0,
+            15,
+            1, 
+            cb_hook=lambda _: rerender_cb(),
+            hint="Change circular angle",
+        )
+        self._coloured_error_visual = ViewerCheckbox(
+            "Coloured Error Visual",
+            False,
+            cb_hook=lambda _: rerender_cb(),
+            hint="Visualise coloured errors around the selected viewpoint. Green = Low, Orange = Medium, Yellow = High",
+        )
+        self._angle_based_error_button = ViewerButton(
+            name="Find Optimal Angle Viewpoint",
+            cb_hook=lambda _: [self.angle_error_cb(), rerender_cb()],
+            disabled=False,
+            visible=True,
         )
         self._edit_viewpoints = ViewerButton(
             name="Add/Remove Viewpoints",
@@ -285,21 +343,36 @@ class ControlPanel:
             self.add_element(self._crop_scale, additional_tags=("crop",))
             self.add_element(self._crop_rot, additional_tags=("crop",))
         
-        if (self.data_location != None):
-            # Photometric error analysis options
-            with self.server.gui.add_folder("Custom Controls"):
-                self.add_element(self._visualise_error)
-                # Error options
-                self.add_element(self._percentage_with_colour)
-                self.add_element(self._error_colour)
-                self.add_element(self._error_threshold)
-                self.add_element(self._error_emphasis)
+        if self.data_location != None:
+            
+            if self.data_location_edited != None:
+                # Error analysis options
+                with self.server.gui.add_folder("Error Controls"):
+                    self.add_element(self._visualise_error)
+                    # Photometric error options
+                    self.add_element(self._percentage_with_colour, additional_tags=("photo",))
+                    self.add_element(self._error_colour, additional_tags=("photo",))
+                    self.add_element(self._error_threshold, additional_tags=("photo",))
+                    self.add_element(self._error_emphasis, additional_tags=("photo",))
+                    
+                    self.add_element(self._angle_based_error)
+                    # Angle error option
+                    self.add_element(self._origin_value, additional_tags=("angle",))
+                    self.add_element(self._radius_value, additional_tags=("angle",))
+                    self.add_element(self._angle_origin, additional_tags=("angle",))
+                    self.add_element(self._viewpoint_slider, additional_tags=("angle",))
+                    self.add_element(self._coloured_error_visual, additional_tags=("angle",))
+                    self.add_element(self._angle_based_error_button, additional_tags=("angle",))
+            
+            with self.server.gui.add_folder("Edit Model"):
+                # Add data
                 self.add_element(self._edit_viewpoints)
                 self.add_element(self._retrain_model)
-                
-            with self.server.gui.add_folder("Experimental Viewpoints"):
-                # Experiment
-                self.add_element(self._insert_camera)
+            
+            if self.data_location_edited != None:
+                with self.server.gui.add_folder("Experimental Viewpoints"):
+                    # Experimental Analysis
+                    self.add_element(self._insert_camera)
 
         self.add_element(self._time, additional_tags=("time",))
         self._reset_camera = server.gui.add_button(
@@ -349,6 +422,9 @@ class ControlPanel:
             self._elements_by_tag[t].append(e)
         e.install(self.server)
     
+    def angle_error_cb(self) -> None:
+        self.angle_error_button_clicked = True
+    
     def edit_viewpoints_cb(self) -> None:
         open_file_explorer(self.data_location)
         
@@ -356,11 +432,31 @@ class ControlPanel:
         for client in self.server.get_clients().values():
             camera_position = client.camera.position
             camera_rotation = client.camera.wxyz
-            print(camera_rotation)
-            print(f"Client Camera Location: x = {camera_position[0]}, y = {camera_position[1]}, z = {camera_position[2]}")
+            return_placement_error(self.data_location, self.data_location_edited, camera_position, camera_rotation)
     
     def retrain_model_cb(self) -> None:
         generate_colmap(self.data_location, self.config_location)
+    
+    def return_location(self) -> Tuple[float, float, float, Tuple[float, float, float, float]]:
+        for client in self.server.get_clients().values():
+            camera_position = client.camera.position
+            camera_rotation = client.camera.wxyz
+            
+            return (camera_position[0], camera_position[1], camera_position[2], camera_rotation)
+    
+    def change_location(self, new_location: Tuple[float, float, float, Tuple[float, float, float, float]]) -> None:
+        """
+        Change the camera location and rotation for all clients.
+
+        Args:
+            new_location: A tuple containing the new position (x, y, z) and rotation (w, x, y, z) for the camera.
+        """
+        for client in self.server.get_clients().values():
+            new_position = new_location[:3]
+            new_rotation = new_location[3]
+            
+            client.camera.position = new_position
+            client.camera.wxyz = new_rotation
 
     def update_control_panel(self) -> None:
         """
@@ -373,28 +469,16 @@ class ControlPanel:
             e.set_hidden(not self._split.value or self.split_output_render == "rgb")
         for e in self._elements_by_tag["crop"]:
             e.set_hidden(not self.crop_viewport)
+        for e in self._elements_by_tag["photo"]:
+            e.set_hidden(not self.photometric_error)
+        for e in self._elements_by_tag["angle"]:
+            e.set_hidden(not self.angle_error)
         self._time.set_hidden(not self._time_enabled)
         self._split_percentage.set_hidden(not self._split.value)
         self._split_output_render.set_hidden(not self._split.value)
         self._split_colormap.set_hidden(not self._split.value)
         self._split_colormap.set_disabled(self.split_output_render == "rgb")
         self._crop_handle.visible = self.crop_viewport
-        
-        if self.num_pipelines == 2:
-            # Enable "Photometric Error" when two pipelines are active
-            self._visualise_error.set_disabled(False)
-            self._error_colour.set_hidden(False)
-            self._error_threshold.set_hidden(False)
-            self._error_emphasis.set_hidden(False)
-            self._insert_camera.set_hidden(False)
-        else:
-            # Hide and disable error controls if only one pipeline is active
-            self._visualise_error.set_disabled(True)
-            self._visualise_error.default_value(False)
-            self._error_colour.set_hidden(True)
-            self._error_threshold.set_hidden(True)
-            self._error_emphasis.set_hidden(True)
-            self._insert_camera.set_hidden(True)
 
     def update_colormap_options(self, dimensions: int, dtype: type) -> None:
         """update the colormap options based on the current render
@@ -417,12 +501,6 @@ class ControlPanel:
     def update_percentage_with_colour(self, percentage: float) -> None:
         """Update the value of the percentage with colour number box"""
         self._percentage_with_colour.value = percentage
-    
-    def visualise_error_cb(self) -> None:
-        if (self.num_pipelines == 1):
-            self.num_pipelines = 2
-        else:
-            self.num_pipelines = 1
 
     @property
     def output_render(self) -> str:
@@ -458,6 +536,16 @@ class ControlPanel:
     def crop_viewport(self) -> bool:
         """Returns the current crop viewport setting"""
         return self._crop_viewport.value
+
+    @property
+    def photometric_error(self) -> bool:
+        """Returns the photometric error setting"""
+        return self._visualise_error.value
+
+    @property
+    def angle_error(self) -> bool:
+        """Returns the angle error setting"""
+        return self._angle_based_error.value
 
     @property
     def error_colour(self) -> torch.Tensor:

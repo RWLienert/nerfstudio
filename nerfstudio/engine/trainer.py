@@ -184,6 +184,7 @@ class Trainer:
                 self.config.viewer,
                 log_filename=viewer_log_path,
                 data_location=None,
+                data_location_edited=None,
                 config_location=None,
                 datapath=datapath,
                 pipeline=self.pipeline,

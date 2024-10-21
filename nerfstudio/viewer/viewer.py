@@ -78,6 +78,7 @@ class Viewer:
         config: cfg.ViewerConfig,
         log_filename: Path,
         data_location: Path,
+        data_location_edited: Path,
         config_location: Path,
         datapath: Path,
         pipeline: Pipeline,
@@ -96,6 +97,7 @@ class Viewer:
         self.pipeline2 = pipeline2
         self.log_filename = log_filename
         self.data_location = data_location
+        self.data_location_edited = data_location_edited
         self.config_location = config_location
         self.datapath = datapath.parent if datapath.is_file() else datapath
         self.datapath2 = datapath2.parent if datapath2 and datapath2.is_file() else datapath2
@@ -214,6 +216,7 @@ class Viewer:
                 self.include_time,
                 self.num_pipelines,
                 self.data_location,
+                self.data_location_edited,
                 self.config_location,
                 VISER_NERFSTUDIO_SCALE_RATIO,
                 self._trigger_rerender,

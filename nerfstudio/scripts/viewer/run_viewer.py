@@ -111,6 +111,10 @@ def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, confi
     base_path = str(load_config[0]).replace("outputs", "")
     base_path = Path(base_path).parents[3]
     data_location = base_path / pipeline1.datamanager.get_datapath() / "images"
+    if (pipeline2 != None):
+        data_location_edited = base_path / pipeline2.datamanager.get_datapath() / "images"
+    else:
+        data_location_edited = None
 
     if config1.vis == "viewer_legacy":
         viewer_state = ViewerLegacyState(
@@ -126,6 +130,7 @@ def _start_viewer(config1: TrainerConfig, pipeline1: Pipeline, step1: int, confi
             config1.viewer,
             log_filename=viewer_log_path,
             data_location = data_location,
+            data_location_edited = data_location_edited,
             config_location = load_config[0],
             datapath=pipeline1.datamanager.get_datapath(),
             datapath2=pipeline2.datamanager.get_datapath() if pipeline2 else None,
